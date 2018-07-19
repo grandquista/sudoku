@@ -8,6 +8,30 @@
 
 import Foundation
 
+extension MutableCollection {
+    /// Shuffles the contents of this collection.
+    mutating func shuffle() {
+        let c = count
+        guard c > 1 else { return }
+        
+        for (firstUnshuffled, unshuffledCount) in zip(indices, stride(from: c, to: 1, by: -1)) {
+            // Change `Int` in the next line to `IndexDistance` in < Swift 4.1
+            let d: Int = numericCast(arc4random_uniform(numericCast(unshuffledCount)))
+            let i = index(firstUnshuffled, offsetBy: d)
+            swapAt(firstUnshuffled, i)
+        }
+    }
+}
+
+extension Sequence {
+    /// Returns an array with the contents of this sequence, shuffled.
+    func shuffled() -> [Element] {
+        var result = Array(self)
+        result.shuffle()
+        return result
+    }
+}
+
 enum Solutions {
     case zero
     case one
@@ -46,56 +70,49 @@ class Board {
         if y >= board[0].count {
             return .one
         }
-        if board[x][y] == nil {
-            var solutions = Solutions.zero
+        if let i = board[x][y] {
             var hypothesis = board
-            for i in posibilities(x: x, y: y) {
-                hypothesis[x][y] = i
-                switch (Board(board: hypothesis).solutions(x: x, y: y), solutions) {
-                case (.zero, .one), (.one, .zero): solutions = .one
-                case (.zero, .zero): break
-                default: return .many
-                }
+            hypothesis[x][y] = nil
+            if Board(board: hypothesis).posibilities(x: x, y: y).contains(i) {
+                return solutions(x:x+1, y:y)
             }
-            return solutions
+            return .zero
         }
-        return solutions(x:x+1, y:y)
+        var result = Solutions.zero
+        var hypothesis = board
+        for i in posibilities(x: x, y: y) {
+            hypothesis[x][y] = i
+            switch (Board(board: hypothesis).solutions(x: x, y: y), result) {
+            case (.zero, .one), (.one, .zero): result = .one
+            case (.zero, .zero): break
+            default: return .many
+            }
+        }
+        return result
     }
     
-    private func posibilities(x: Int, y: Int) -> Array<uint8> {
-        var ideas = Set<uint8>(arrayLiteral: 1, 2, 3, 4, 5, 6, 7, 8, 9)
-        for i in board[x] {
-            if let i: uint8 = i {
-                ideas.remove(i)
-            }
-        }
-        for i in column(y:y) {
-            if let i: uint8 = i {
-                ideas.remove(i)
-            }
-        }
-        for (i, row) in board.enumerated() {
-            if Range(uncheckedBounds: (0, 1)).contains(i) {
-                for (j, cell) in row.enumerated() {
-                    if Range(uncheckedBounds: (0, 1)).contains(j) {
-                        if let cell: uint8 = cell {
-                            ideas.remove(cell)
-                        }
+    private func posibilities(x: Int, y: Int) -> Set<uint8> {
+        let rowBounds = Range(uncheckedBounds: (x - x % 3, x - x % 3 + 3))
+        let cellBounds = Range(uncheckedBounds: (y - y % 3, y - y % 3 + 3))
+        return Set<uint8>(arrayLiteral: 1, 2, 3, 4, 5, 6, 7, 8, 9)
+            .subtracting(board[x].lazy.compactMap { $0 })
+            .subtracting(column(y: y).lazy.compactMap { $0 })
+            .subtracting(board.lazy.enumerated().map { row in
+                row.element.lazy.enumerated().compactMap { cell in
+                    if rowBounds.contains(row.offset) && cellBounds.contains(cell.offset) {
+                        return cell.element
                     }
+                    return nil
                 }
-            }
-        }
-        return Array<uint8>(ideas)
+            }.joined())
     }
     
     private func column(y: Int) -> Array<uint8?> {
-        var output = Array<uint8?>()
-        for (n, i) in board.lazy.joined().enumerated() {
-            if n % 8 == y {
-                output.append(i)
+        return board.lazy.joined().enumerated()
+            .filter {
+                $0.offset % 8 == y
             }
-        }
-        return output
+            .map { $0.element }
     }
     
     private let board: Array<Array<uint8?>>
@@ -103,7 +120,17 @@ class Board {
 
 print("Hello, World!")
 
-var board = Board(board: Array(repeating: Array<uint8?>(repeating: nil, count: 9), count: 9))
+print("How difficult should this be 0 .. 100?")
+
+let difficulty = readLine()
+
+guard difficulty != nil else { exit(0) }
+
+var board = Board(board: Array(repeating: 0, count: 9).map { _ in
+    Array(repeating: 0, count: 9).enumerated()
+        .map { arc4random_uniform(100) > 50 ? uint8($0.offset + 1) : nil }
+        .shuffled()
+}.shuffled())
 
 board.write()
 
