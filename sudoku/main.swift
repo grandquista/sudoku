@@ -40,6 +40,9 @@ enum Solutions {
 
 class Board {
     init(board: Array<Array<uint8?>>) {
+        guard board.count == 9 else { exit(1) }
+        guard board.filter({ $0.count != 9 }).isEmpty else { exit(1) }
+        guard board.joined().compactMap({ $0 }).filter({ $0 > 9 || $0 < 1 }).isEmpty else { exit(1) }
         self.board = board
     }
     
@@ -63,18 +66,34 @@ class Board {
         return solutions(x: 0, y: 0)
     }
     
-    func solutions(x: Int, y: Int) -> Solutions {
-        if x >= board.count {
-            return solutions(x:0, y:y+1)
+    func makeValid() -> Board {
+        if solutions() == .one {
+            return self
         }
-        if y >= board[0].count {
+        return _makeValid().shuffled().first ?? self
+    }
+    
+    private func _makeValid() -> Array<Board> {
+        let next = mutations()
+        let output = next.filter { $0.solutions() == .one }
+        if output.isEmpty {
+            return Array<Board>(next.map { $0._makeValid() }.joined())
+        }
+        return Array<Board>(output)
+    }
+    
+    private func solutions(x: Int, y: Int) -> Solutions {
+        if x >= board.count {
+            return solutions(x: 0, y: y+1)
+        }
+        if y >= board[x].count {
             return .one
         }
         if let i = board[x][y] {
             var hypothesis = board
             hypothesis[x][y] = nil
             if Board(board: hypothesis).posibilities(x: x, y: y).contains(i) {
-                return solutions(x:x+1, y:y)
+                return solutions(x: x+1, y: y)
             }
             return .zero
         }
@@ -91,24 +110,43 @@ class Board {
         return result
     }
     
+    private func mutations() -> Array<Board> {
+        return Array<Board>(self.board.enumerated().map { (row) in
+            row.element.enumerated().map { (cell) -> Array<Board> in
+                var hypothesis = self.board
+                hypothesis[row.offset][cell.offset] = nil
+                let next = Board(board: hypothesis)
+                return [next] + next.additions(x: row.offset, y: cell.offset)
+            }
+            }.joined().joined())
+    }
+    
+    private func additions(x: Int, y: Int) -> Array<Board> {
+        return posibilities(x: x, y: y).map {
+            var hypothesis = self.board
+            hypothesis[x][y] = $0
+            return Board(board: hypothesis)
+        }
+    }
+    
     private func posibilities(x: Int, y: Int) -> Set<uint8> {
         let rowBounds = Range(uncheckedBounds: (x - x % 3, x - x % 3 + 3))
         let cellBounds = Range(uncheckedBounds: (y - y % 3, y - y % 3 + 3))
         return Set<uint8>(arrayLiteral: 1, 2, 3, 4, 5, 6, 7, 8, 9)
-            .subtracting(board[x].lazy.compactMap { $0 })
-            .subtracting(column(y: y).lazy.compactMap { $0 })
-            .subtracting(board.lazy.enumerated().map { row in
-                row.element.lazy.enumerated().compactMap { cell in
+            .subtracting(board[x].compactMap { $0 })
+            .subtracting(column(y: y).compactMap { $0 })
+            .subtracting(board.enumerated().map { row in
+                row.element.enumerated().compactMap { cell in
                     if rowBounds.contains(row.offset) && cellBounds.contains(cell.offset) {
                         return cell.element
                     }
                     return nil
                 }
-            }.joined())
+                }.joined())
     }
     
     private func column(y: Int) -> Array<uint8?> {
-        return board.lazy.joined().enumerated()
+        return board.joined().enumerated()
             .filter {
                 $0.offset % 8 == y
             }
@@ -122,15 +160,21 @@ print("Hello, World!")
 
 print("How difficult should this be 0 .. 100?")
 
-let difficulty = readLine()
+guard let rawInput = readLine() else { exit(0) }
 
-guard difficulty != nil else { exit(0) }
+let input = rawInput.trimmingCharacters(in: CharacterSet.whitespaces)
+
+guard input.count <= 3 && input.count > 0 else { exit(0) }
+
+guard let difficulty = Int(input) else { exit(0) }
+
+guard difficulty <= 100 && difficulty >= 0 else { exit(0) }
 
 var board = Board(board: Array(repeating: 0, count: 9).map { _ in
     Array(repeating: 0, count: 9).enumerated()
-        .map { arc4random_uniform(100) > 50 ? uint8($0.offset + 1) : nil }
+        .map { arc4random_uniform(100) > difficulty ? uint8($0.offset + 1) : nil }
         .shuffled()
-}.shuffled())
+    }.shuffled()).makeValid()
 
 board.write()
 
